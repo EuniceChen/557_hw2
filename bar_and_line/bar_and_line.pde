@@ -13,10 +13,23 @@ enum GraphStatus {
   BarToLine
 }
 
+enum AnimationStatus {
+  HeightAnimation,
+  WidthAnimation,
+  RectToDot,
+  LineAnimation
+}
+
 float highestNumber = -1, numberRows = 0;
 boolean textShown = false, animationClicked = false;
 
-GraphStatus graphStatus = GraphStatus.Line;
+String hoverString = "";
+
+GraphStatus graphStatus = GraphStatus.Bar;
+AnimationStatus animationStatus = AnimationStatus.HeightAnimation;
+
+float lerpRatio = 100, lerpDestRatio = 0;
+color graphColor = #37DCED, highlightedColor = #B4EFF5;
 
 void setup() {
   background(255);
@@ -35,19 +48,27 @@ void setup() {
 }
 
 void draw() {
+  background(255);
   float topMargin = 0.05 * height, bottomMargin = 0.9 * height, leftMargin = 0.1 * width, rightMargin = 0.90 * width;
   int sizeOfText = (width + height) / 100;
   drawGraph(graphStatus);
   drawAxis();
   
   String buttonText = "";
-  if(graphStatus == GraphStatus.Line) {
+  if(graphStatus == GraphStatus.Line || graphStatus == GraphStatus.BarToLine) {
     buttonText = "Bar";
   }
-   else if(graphStatus == GraphStatus.Bar) {
+   else if(graphStatus == GraphStatus.Bar || graphStatus == GraphStatus.LineToBar) {
     buttonText = "Line";
   }
   drawButton(buttonText, rightMargin, topMargin - sizeOfText, (width - sizeOfText) * 1.0, topMargin + sizeOfText, #C9E2F2);
+  if(textShown == true) {
+    textSize(sizeOfText * 3 / 2);
+    fill(0);
+
+    textAlign(LEFT);
+    text(hoverString, mouseX, mouseY);
+  }
 }
 
 void drawButton(String text, float x1, float y1, float x2, float y2, color c) {
@@ -81,7 +102,6 @@ void drawAxis() {
   textAlign(RIGHT);
   text("0", leftMargin - sizeOfText / 2, bottomMargin + sizeOfText / 2);
 
-  
   // Name labels
   text(valueName, leftMargin, topMargin - sizeOfText / 2);
   fill(255);
@@ -123,12 +143,13 @@ void drawGraph(GraphStatus status) {
   float xPos = leftMargin + interval;
   stroke(255);
   fill(#2D31DE);
+  lerpRatio = lerp(lerpRatio, lerpDestRatio, 0.03);
   for(TableRow row : table.rows()) {
     // Draw bar or line
     String name = row.getString(keyName);
     int price = row.getInt(valueName);
-    stroke(45, 49, 222);
-    fill(45, 49, 222);
+    stroke(graphColor);
+    fill(graphColor);
     if(status == GraphStatus.Bar) {
       drawBar(xPos, price * ratio, interval, name, price);
     }
@@ -136,8 +157,8 @@ void drawGraph(GraphStatus status) {
       float centerX = xPos + interval / 2, centerY = topGraphMargin + highestHeight - price * ratio, diameter = interval / 2;
       drawDot(centerX, centerY, diameter, name, price);
       if(firstTime == false) {
-        stroke(45, 49, 222);
-        fill(45, 49, 222);
+        stroke(graphColor);
+        fill(graphColor);
         line(prevX, prevY, centerX, centerY);
       }
       firstTime = false;
@@ -145,7 +166,105 @@ void drawGraph(GraphStatus status) {
       prevY = centerY;
     }
     
+    else if(status == GraphStatus.BarToLine) {
+      float diameter = interval / 2;
+      if(animationStatus == AnimationStatus.HeightAnimation) { 
+        rect(xPos, topGraphMargin + highestHeight - price * ratio, interval, diameter / 2 + (price * ratio - diameter /2) * lerpRatio / 100); 
+        if(lerpRatio <= lerpDestRatio + 0.5) {
+          animationStatus = AnimationStatus.WidthAnimation;
+          lerpRatio = 100;
+          lerpDestRatio = 0;
+        }
+      }
+      else if(animationStatus == AnimationStatus.WidthAnimation) {
+        float destXpos = xPos + interval / 4;
+        rect(destXpos - interval / 4 * lerpRatio / 100, topGraphMargin + highestHeight - price * ratio - interval / 4 + interval / 4 * lerpRatio /100, 
+        diameter + diameter * lerpRatio / 100, diameter); 
+        if(lerpRatio <= lerpDestRatio + 0.5) {
+          animationStatus = AnimationStatus.RectToDot;
+          lerpRatio = 100;
+          lerpDestRatio = 0;
+        }
+      } 
+      else if(animationStatus == AnimationStatus.RectToDot) {
+        rect(xPos + interval / 4, topGraphMargin + highestHeight - price * ratio - interval / 4, diameter, diameter, diameter * (1 - lerpRatio / 100));
+        if(lerpRatio <= lerpDestRatio + 0.5) {
+          animationStatus = AnimationStatus.LineAnimation;
+          lerpRatio = 100;
+          lerpDestRatio = 0;
+          float centerX = xPos + interval / 2, centerY = topGraphMargin + highestHeight - price * ratio;
+          drawDot(centerX, centerY, diameter, name, price);
+          firstTime = true;
+        }
+      }
+      else if(animationStatus == AnimationStatus.LineAnimation){
+        float centerX = xPos + interval / 2, centerY = topGraphMargin + highestHeight - price * ratio;
+        drawDot(centerX, centerY, diameter, name, price);
+        if(firstTime == false) {
+          stroke(graphColor);
+          fill(graphColor);
+          line(prevX, prevY, prevX + (centerX - prevX) * (1 - lerpRatio / 100), prevY + (centerY - prevY) * (1 - lerpRatio / 100));
+        }
+        firstTime = false;
+        prevX = centerX;
+        prevY = centerY;
+        
+        if(lerpRatio <= lerpDestRatio + 0.5) {
+          graphStatus = GraphStatus.Line;
+        }
+      }
+    }
+    else if (status == GraphStatus.LineToBar){
+      float diameter = interval / 2;
+      if(animationStatus == AnimationStatus.LineAnimation) {
+        float centerX = xPos + interval / 2, centerY = topGraphMargin + highestHeight - price * ratio;
+        drawDot(centerX, centerY, diameter, name, price);
+        if(firstTime == false) {
+          stroke(graphColor);
+          fill(graphColor);
+          line(prevX, prevY, prevX + (centerX - prevX) * (1 - lerpRatio / 100), prevY + (centerY - prevY) * (1 - lerpRatio / 100));
+        }
+        firstTime = false;
+        prevX = centerX;
+        prevY = centerY;
+        
+        if(lerpRatio >= lerpDestRatio - 0.5) {
+          lerpRatio = 0;
+          lerpDestRatio = 100;
+          animationStatus = AnimationStatus.RectToDot;
+        }
+      }
+      else if(animationStatus == AnimationStatus.RectToDot) {
+        rect(xPos + interval / 4, topGraphMargin + highestHeight - price * ratio - interval / 4, diameter, diameter, diameter * (1 - lerpRatio / 100));
+        if(lerpRatio >= lerpDestRatio - 0.5) {
+          animationStatus = AnimationStatus.WidthAnimation;
+          lerpRatio = 0;
+          lerpDestRatio = 100;
+          float centerX = xPos + interval / 2, centerY = topGraphMargin + highestHeight - price * ratio;
+          drawDot(centerX, centerY, diameter, name, price);
+          firstTime = true;
+        }
+      }
+      else if(animationStatus == AnimationStatus.WidthAnimation) {
+        float destXpos = xPos + interval / 4;
+        rect(destXpos - interval / 4 * lerpRatio / 100, topGraphMargin + highestHeight - price * ratio - interval / 4 + interval / 4 * lerpRatio /100, 
+        diameter + diameter * lerpRatio / 100, diameter); 
+        if(lerpRatio >= lerpDestRatio - 0.5) {
+          animationStatus = AnimationStatus.HeightAnimation;
+          lerpRatio = 0;
+          lerpDestRatio = 100;
+        }
+      }
+      else if(animationStatus == AnimationStatus.HeightAnimation) { 
+        rect(xPos, topGraphMargin + highestHeight - price * ratio, interval, diameter / 2 + (price * ratio - diameter /2) * lerpRatio / 100); 
+        if(lerpRatio >= lerpDestRatio - 0.5) {
+          graphStatus = GraphStatus.Bar;
+        }
+      }
+    }
+    
     // Name labels (rotated)
+    textSize(sizeOfText);
     textAlign(LEFT);
     translate(xPos - interval / 2, bottomMargin + sizeOfText / 2);
     rotate(PI / 5.0);
@@ -164,8 +283,8 @@ void drawDot(float centerX, float centerY, float diameter, String name, int pric
   float topMargin = 0.05 * height, bottomMargin = 0.9 * height, leftMargin = 0.1 * width, rightMargin = 0.90 * width;
   float highestHeight = 0.8 * height, topDotMargin = 0.1 * height;
   int sizeOfText = (width + height) / 100;
-  stroke(45, 49, 222);
-  fill(45, 49, 222);
+  stroke(graphColor);
+  fill(graphColor);
   ellipse(centerX, centerY, diameter, diameter);
   
   // Mouse hover
@@ -173,8 +292,8 @@ void drawDot(float centerX, float centerY, float diameter, String name, int pric
     mouseY >= centerY - diameter && mouseY <= centerY + diameter){
 
     // Highligh dot
-    stroke(163, 167, 234);
-    fill(163, 167, 234);
+    stroke(highlightedColor);
+    fill(highlightedColor);
     ellipse(centerX, centerY, diameter + 2, diameter + 2);
     stroke(255);
     fill(255);
@@ -185,10 +304,11 @@ void drawDot(float centerX, float centerY, float diameter, String name, int pric
 
     //textAlign(LEFT);
     //text(name + ": " + str(price), mouseX, mouseY);
-    textAlign(CENTER);
-    text(name + ": " + str(price), width / 2, topDotMargin - sizeOfText);
-    fill(255);
-    textSize(sizeOfText);
+    //textAlign(CENTER);
+    //text(name + ": " + str(price), width / 2, topDotMargin - sizeOfText);
+    //fill(255);
+    //textSize(sizeOfText);
+    hoverString = name + ": " + str(price);
     textShown = true;
   }
 }
@@ -204,22 +324,21 @@ void drawBar(float xPos, float barHeight, float interval, String name, int price
     mouseY >= topBarMargin + highestHeight - barHeight && mouseY <= topBarMargin + highestHeight){
 
     // Highligh bar
-    stroke(163, 167, 234);
-    fill(163, 167, 234);
+    stroke(highlightedColor);
+    fill(highlightedColor);
     rect(xPos - 1, topBarMargin + highestHeight - barHeight, interval + 2, barHeight); 
     fill(255);
     stroke(255);
     
     // Show text
-    textSize(sizeOfText * 3 / 2);
-    fill(0);
+    //textSize(sizeOfText * 3 / 2);
+    //fill(0);
 
     //textAlign(LEFT);
     //text(name + ": " + str(price), mouseX, mouseY);
-    textAlign(CENTER);
-    text(name + ": " + str(price), width / 2, topBarMargin - sizeOfText);
-    fill(255);
-    textSize(sizeOfText);
+    //textAlign(CENTER);
+    //text(name + ": " + str(price), width / 2, topBarMargin - sizeOfText);
+    hoverString = name + ": " + str(price);
     textShown = true;
   }
 }
@@ -237,12 +356,17 @@ void mouseClicked() {
     println("animation");
     animationClicked = false;
     if(graphStatus == GraphStatus.Line) {
-      graphStatus = GraphStatus.Bar;
+      lerpRatio = 0;
+      lerpDestRatio = 100;
+      graphStatus = GraphStatus.LineToBar;
       background(255, 0);
       println("now bar");
     }
     else if(graphStatus == GraphStatus.Bar) {
-      graphStatus = GraphStatus.Line;
+      lerpRatio = 100;
+      lerpDestRatio = 0;
+      graphStatus = GraphStatus.BarToLine;
+      animationStatus = AnimationStatus.HeightAnimation;
       background(255, 0);
       println("now line");
     }
